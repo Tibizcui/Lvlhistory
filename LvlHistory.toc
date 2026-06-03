@@ -1,0 +1,17 @@
+## Interface: 120005
+## Title: LvlHistory
+## Notes: Leveling & farming session tracker — TibiSuite
+## Notes-frFR: Suivi de sessions leveling & farming — TibiSuite
+## Author: Tibizcui
+## Version: 0.1.0
+## SavedVariables: LvlHistoryDB
+## IconTexture: Interface\AddOns\LvlHistory\Media\icon
+
+Utils.lua
+Bridge.lua
+Core.lua
+Leveling.lua
+Farming.lua
+Minimap.lua
+UI.lua
+Locale\frFR.lua
