@@ -880,11 +880,13 @@ local DGN_ROW_H    = 30
 local DGN_BAR_H    = 8
 local DGN_TITLE_H  = 32
 -- rowW = FW - PAD*2 - 22 = 430
--- Layout : 6(L) + 130(nom) + 8 + 140(bar) + 8 + 80(status) + 6 + 24(count) + 28(R) = 430
-local DGN_NAME_W   = 130
-local DGN_STATUS_W = 80
+-- Layout : 6(L) + nameW(dyn) + 8 + 80(bar) + 8 + statusW(dyn) + 8 + 36(diff) + 8 + 54(time) + 6 + 24(count) + right
+local DGN_NAME_W   = 110
+local DGN_STATUS_W = 60
 local DGN_COUNT_W  = 24
-local DGN_BAR_W    = 140
+local DGN_BAR_W    = 80
+local DGN_DIFF_W   = 36
+local DGN_TIME_W   = 54
 
 -- ── Palette photo (vert / jaune / rouge) ────────────────────
 -- Heroique → vert  (= "Timed"    dans la photo)
@@ -983,16 +985,30 @@ local function CreateDgnRow(parent, index, rowW)
     row.BarMP = MakeSeg(DGN_COLORS.MP,      row.BarMy)
     row.BarHolder = barHolder
 
-    -- Status "H:5  Myth:1  M+:2" (couleurs = segments)
+    -- Status "H:5  M:1" (couleurs = segments, sans N:X)
     row.Status = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     row.Status:SetPoint("LEFT", barHolder, "RIGHT", 8, 0)
     row.Status:SetWidth(DGN_STATUS_W)
     row.Status:SetNonSpaceWrap(false)
     row.Status:SetJustifyH("LEFT")
 
+    -- Difficulte : meilleure cle timee (ex: "+7")
+    row.Diff = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    row.Diff:SetWidth(DGN_DIFF_W)
+    row.Diff:SetJustifyH("CENTER")
+    row.Diff:SetNonSpaceWrap(false)
+    row.Diff:SetTextColor(0.94, 0.75, 0.25, 1)
+
+    -- Meilleur temps (ex: "18:42")
+    row.Time = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    row.Time:SetWidth(DGN_TIME_W)
+    row.Time:SetJustifyH("CENTER")
+    row.Time:SetNonSpaceWrap(false)
+    row.Time:SetTextColor(0.22, 0.72, 0.44, 1)
+
     -- Count (rose/saumon, far right — copie de SkyMythicHistory)
     row.Count = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    row.Count:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+    row.Count:SetPoint("RIGHT", row, "RIGHT", -4, 0)
     row.Count:SetTextColor(0.95, 0.42, 0.42, 1)
 
     -- Separateur bas
@@ -1038,6 +1054,22 @@ local function BuildTabDungeons(ca)
     titleLine:SetPoint("BOTTOMLEFT",  secTitle, "BOTTOMLEFT",  0, -3)
     titleLine:SetPoint("BOTTOMRIGHT", secTitle, "BOTTOMRIGHT", 0, -3)
     titleLine:SetHeight(1)
+
+    -- En-tetes colonnes droite
+    local hdrDiff = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    hdrDiff:SetPoint("TOPLEFT", content, "TOPLEFT",
+        6 + DGN_NAME_W + 8 + DGN_BAR_W + 8 + DGN_STATUS_W + 8, -6)
+    hdrDiff:SetWidth(DGN_DIFF_W)
+    hdrDiff:SetJustifyH("CENTER")
+    hdrDiff:SetTextColor(C.MUTED[1], C.MUTED[2], C.MUTED[3])
+    hdrDiff:SetText("Diff.")
+
+    local hdrTime = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    hdrTime:SetPoint("TOPLEFT", hdrDiff, "TOPRIGHT", 8, 0)
+    hdrTime:SetWidth(DGN_TIME_W)
+    hdrTime:SetJustifyH("CENTER")
+    hdrTime:SetTextColor(C.MUTED[1], C.MUTED[2], C.MUTED[3])
+    hdrTime:SetText("Tps")
 
     -- Pre-construire MAX_DGN_ROWS lignes (cachees, comme SkyMythicHistory)
     dgnRows = {}
@@ -1135,10 +1167,27 @@ function UI.RefreshTab4()
     local nameW = math.max(100, math.min(220, maxNamePx + 4))
 
     -- Recalculer les largeurs des autres colonnes en fonction de nameW
-    -- Layout : 6(L) + nameW + 8 + DGN_BAR_W + 8 + statusW + 6 + DGN_COUNT_W + 28(R)
+    -- Layout : 6(L) + nameW + 8 + DGN_BAR_W + 8 + statusW + 8 + DGN_DIFF_W + 8 + DGN_TIME_W + 6 + DGN_COUNT_W + 10(R)
     local rowW     = FW - PAD * 2 - 22
-    local fixed    = 6 + 8 + DGN_BAR_W + 8 + 6 + DGN_COUNT_W + 28
-    local statusW  = math.max(50, rowW - fixed - nameW)
+    local fixed    = 6 + 8 + DGN_BAR_W + 8 + 8 + DGN_DIFF_W + 8 + DGN_TIME_W + 6 + DGN_COUNT_W + 10
+    local statusW  = math.max(40, rowW - fixed - nameW)
+
+    -- Helper : formate des millisecondes en "m:ss"
+    local function FmtMs(ms)
+        local s = math.floor(ms / 1000)
+        return string.format("%d:%02d", math.floor(s / 60), s % 60)
+    end
+
+    -- Table nom→mapChallengeModeID depuis l'API Blizzard
+    local mapNameToID = {}
+    if C_ChallengeMode and C_ChallengeMode.GetMapTable then
+        for _, mapID in ipairs(C_ChallengeMode.GetMapTable() or {}) do
+            local name = C_ChallengeMode.GetMapUIInfo(mapID)
+            if name and name ~= "" then
+                mapNameToID[name] = mapID
+            end
+        end
+    end
 
     -- ── Mise a jour des lignes pre-construites ───────────────────────────────
     local maxDungCount = (sorted[1] and sorted[1].count) or 1
@@ -1152,6 +1201,12 @@ function UI.RefreshTab4()
             row.BarHolder:SetPoint("LEFT", row, "LEFT", 6 + nameW + 8, 0)
             row.Status:SetWidth(statusW)
 
+            -- Colonnes Diff et Time (ancres apres Status)
+            row.Diff:ClearAllPoints()
+            row.Diff:SetPoint("LEFT", row.Status, "RIGHT", 8, 0)
+            row.Time:ClearAllPoints()
+            row.Time:SetPoint("LEFT", row.Diff, "RIGHT", 8, 0)
+
             -- Nom : 1er en or vif, les autres en or dim
             row.Name:SetText(d.name)
             if i == 1 then
@@ -1161,28 +1216,57 @@ function UI.RefreshTab4()
             end
             -- Count (rose/saumon, far right)
             row.Count:SetText(tostring(d.count))
-            -- Status : H:X | meilleure cle M+ (si dispo) | N:X
+
+            -- Status : H:X  M+:X (sans M:X ni N:X)
             local parts = {}
             if d.heroic > 0 then
                 table.insert(parts, "|cff1edd1eH:" .. d.heroic .. "|r")
             end
-            if d.mythic > 0 then
-                -- Mythique (sans clé = sans M+) : affiche le nombre de runs
-                table.insert(parts, "|cffffc800M:" .. d.mythic .. "|r")
-            end
             if d.mp > 0 then
-                -- M+ : affiche la meilleure cle si disponible, sinon le nombre de runs
-                local bestKey = bestKeyDB[d.name]
-                if bestKey and bestKey > 0 then
-                    table.insert(parts, "|cffe64040M+|r|cffffc800" .. bestKey .. "|r")
-                else
-                    table.insert(parts, "|cffe64040M+:" .. d.mp .. "|r")
-                end
-            end
-            if d.normal > 0 then
-                table.insert(parts, "|cff999999N:" .. d.normal .. "|r")
+                table.insert(parts, "|cffe64040M+:" .. d.mp .. "|r")
             end
             row.Status:SetText(table.concat(parts, " "))
+
+            -- ── Difficulte et Temps depuis les donnees Blizzard ──────────────
+            local mapID   = mapNameToID[d.name]
+            local bestRun = nil
+            if mapID and C_MythicPlus and C_MythicPlus.GetSeasonBestForMap then
+                bestRun = C_MythicPlus.GetSeasonBestForMap(mapID)
+            end
+
+            if bestRun and bestRun.keystoneLevel and bestRun.keystoneLevel > 0 then
+                -- Donnees live Blizzard
+                row.Diff:SetText("+" .. bestRun.keystoneLevel)
+                row.Diff:SetTextColor(0.94, 0.75, 0.25, 1)
+                local ms = bestRun.completionMilliseconds
+                if ms and ms > 0 then
+                    row.Time:SetText(FmtMs(ms))
+                    row.Time:SetTextColor(0.22, 0.72, 0.44, 1)
+                else
+                    row.Time:SetText("--")
+                    row.Time:SetTextColor(0.44, 0.41, 0.35, 1)
+                end
+            else
+                -- Fallback : donnees stockees par LvlHistory
+                local bt = (db.dgnBestTime or {})[d.name]
+                if bt and bt.key and bt.key > 0 then
+                    row.Diff:SetText("+" .. bt.key)
+                    row.Diff:SetTextColor(0.63, 0.57, 0.44, 1)
+                    if bt.ms and bt.ms > 0 then
+                        row.Time:SetText(FmtMs(bt.ms))
+                        row.Time:SetTextColor(0.22, 0.72, 0.44, 1)
+                    else
+                        row.Time:SetText("--")
+                        row.Time:SetTextColor(0.44, 0.41, 0.35, 1)
+                    end
+                else
+                    row.Diff:SetText("--")
+                    row.Diff:SetTextColor(0.44, 0.41, 0.35, 1)
+                    row.Time:SetText("--")
+                    row.Time:SetTextColor(0.44, 0.41, 0.35, 1)
+                end
+            end
+
             -- Barres (SetWidth seulement — aucune texture recree)
             UpdateDgnRowBar(row, d, maxDungCount)
             row:Show()
@@ -1664,29 +1748,13 @@ local function Build()
         BuildTabZones,
         BuildTabAlts,
         BuildTabDungeons,
-        BuildTabStats,
+                BuildTabStats,
     }
     for i, builder in ipairs(builders) do
         panels[i] = builder(ca)
-        panels[i]:Hide()
     end
 
-    -- Corps compact mode reduit (Option B grille 2x2)
-    BuildCompactBody(mainFrame)
-
-    -- Rafraichissement automatique toutes les 2 secondes
-    mainFrame:SetScript("OnUpdate", (function()
-        local acc = 0
-        return function(_, dt)
-            acc = acc + dt
-            if acc >= 2 then
-                acc = 0
-                RefreshGlobal()
-                local fn = UI["RefreshTab" .. activeTab]
-                if fn then fn() end
-            end
-        end
-    end)())
+    ShowTab(1)
 end
 
 -- ─────────────────────────────────────────────
@@ -1695,26 +1763,8 @@ end
 
 function UI.Show()
     if not mainFrame then Build() end
-
-    -- Restaurer l'opacite sauvegardee
-    local settings = LvlHistoryDB and LvlHistoryDB.settings
-    if settings then
-        mainFrame:SetAlpha(settings.alpha or 0.97)
-        -- Restaurer l'etat collapse
-        if settings.collapsed then
-            UI.Collapse()
-        else
-            UI.Expand()
-            ShowTab(1)
-            panels[1]:Show()
-        end
-    else
-        ShowTab(1)
-        panels[1]:Show()
-    end
-
-    RefreshGlobal()
     mainFrame:Show()
+    UI.RefreshTab1()
 end
 
 function UI.Hide()
@@ -1722,9 +1772,22 @@ function UI.Hide()
 end
 
 function UI.Toggle()
-    if not mainFrame or not mainFrame:IsShown() then
+    if not mainFrame then
         UI.Show()
-    else
-        UI.Hide()
+        return
     end
+    if mainFrame:IsShown() then
+        UI.Hide()
+    else
+        UI.Show()
+    end
+end
+
+function UI.Init()
+    -- Le frame est construit à la première ouverture (lazy build)
+end
+
+-- Fonction globale appelée par TibiSuite
+function LvlHistory_Toggle()
+    LvlHistory.UI.Toggle()
 end

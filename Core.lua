@@ -21,6 +21,7 @@ local CHAR_DEFAULTS = {
     dgnRuns      = {},          -- { ["Nom Donjon"] = count } — total persistant
     dgnDetails   = {},          -- { ["Nom||Difficulte"] = count } — détail persistant
     dgnBestKey   = {},          -- { ["Nom Donjon"] = highestKeyLevel } — meilleure clé M+
+    dgnBestTime  = {},          -- { ["Nom Donjon"] = { key=N, ms=N } } — meilleur temps sur la plus haute clé timée
     dgnLog       = {},          -- [ { name, diff, ts } ] — historique individuel persistant
     totalPlayTime = 0,          -- secondes cumulées toutes sessions (persistant)
     _dgn         = {            -- état du run de donjon en cours (survit aux reloads)
@@ -164,9 +165,11 @@ coreFrame:SetScript("OnEvent", function(self, event, ...)
         db.session.zoneIsInstance = IsInInstance() or false
 
         -- Init défensive (compatibilité avec les saves antérieures)
-        db.dgnRuns    = db.dgnRuns    or {}
-        db.dgnDetails = db.dgnDetails or {}
-        db.dgnLog     = db.dgnLog     or {}
+        db.dgnRuns     = db.dgnRuns    or {}
+        db.dgnDetails  = db.dgnDetails or {}
+        db.dgnLog      = db.dgnLog     or {}
+        db.dgnBestKey  = db.dgnBestKey  or {}
+        db.dgnBestTime = db.dgnBestTime or {}
 
         -- Migration : supprimer de db.zones les noms qui correspondent à des donjons connus
         -- (données enregistrées avant l'ajout du filtre zoneIsInstance)
@@ -326,11 +329,21 @@ dgnFrame:SetScript("OnEvent", function(self, event, ...)
         end
         -- Capturer le niveau de clé via GetCompletionInfo (disponible au moment de l'event)
         if C_ChallengeMode and C_ChallengeMode.GetCompletionInfo then
-            local _, keyLevel = C_ChallengeMode.GetCompletionInfo()
+            local completionMs, keyLevel, onTime = C_ChallengeMode.GetCompletionInfo()
             if keyLevel and keyLevel > 0 and zoneName ~= "" then
                 db.dgnBestKey = db.dgnBestKey or {}
                 if not db.dgnBestKey[zoneName] or keyLevel > db.dgnBestKey[zoneName] then
                     db.dgnBestKey[zoneName] = keyLevel
+                end
+                -- Meilleur temps : stocker uniquement si la clé est timée (onTime)
+                if onTime and completionMs and completionMs > 0 then
+                    db.dgnBestTime = db.dgnBestTime or {}
+                    local cur = db.dgnBestTime[zoneName]
+                    if not cur
+                        or keyLevel > cur.key
+                        or (keyLevel == cur.key and completionMs < cur.ms) then
+                        db.dgnBestTime[zoneName] = { key = keyLevel, ms = completionMs }
+                    end
                 end
             end
         end
@@ -417,17 +430,17 @@ SlashCmdList["LVLHISTORY"] = function(msg)
 
     elseif cmd == "reset" then
         print(T.Utils.Colorize("[LvlHistory]", "F0B429")
-            .. " Tapez |cffFFFFFF/lvlh reset confirm|r pour confirmer la réinitialisation.")
+            .. " Tapez |cffFFFFFF/lvlh reset confirm|r pour confirmer.")
 
     elseif cmd == "reset confirm" then
-        LvlHistoryDB.chars[T.charKey] = nil
-        ReloadUI()
+        local key = T.charKey
+        if key and LvlHistoryDB and LvlHistoryDB.chars and LvlHistoryDB.chars[key] then
+            LvlHistoryDB.chars[key] = nil
+            print(T.Utils.Colorize("[LvlHistory]", "F0B429") .. " Données réinitialisées. Rechargez (/reload).")
+        end
 
     else
-        print(T.Utils.Colorize("[LvlHistory]", "F0B429") .. " Commandes disponibles :")
-        print("  /lvlh          — Ouvrir/Fermer la fenêtre")
-        print("  /lvlh minimap  — Afficher/Masquer le bouton minimap")
-        print("  /lvlh debug    — Activer/Désactiver le mode debug")
-        print("  /lvlh reset    — Réinitialiser les données du personnage")
+        print(T.Utils.Colorize("[LvlHistory]", "F0B429")
+            .. " Commandes : /lvlh | /lvlh minimap | /lvlh debug | /lvlh reset")
     end
 end
