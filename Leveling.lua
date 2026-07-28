@@ -88,13 +88,9 @@ local function OnQuestTurnIn(questID)
     LvlHistory.Utils.Log("Quête rendue (ID: %s) | Total: %d", tostring(questID), db.quests.total)
 end
 
-local function OnChallengeModeCompleted()
-    local db = LvlHistory.db
-    if not db then return end
-
-    db.session.dungeons = (db.session.dungeons or 0) + 1
-    LvlHistory.Utils.Log("Donjon complété | Total session: %d", db.session.dungeons)
-end
+-- Note : le comptage des donjons (session + total) est gere de facon
+-- mode-agnostique par Core.lua (dgnFrame / RecordDungeon). On n'ecoute donc
+-- PAS CHALLENGE_MODE_COMPLETED ici, pour eviter un double comptage.
 
 -- ─────────────────────────────────────────────
 -- API publique
@@ -111,14 +107,12 @@ function L.Start()
     levelingFrame:RegisterEvent("PLAYER_LEVEL_UP")
     levelingFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
     levelingFrame:RegisterEvent("QUEST_TURNED_IN")
-    levelingFrame:RegisterEvent("CHALLENGE_MODE_COMPLETED")
 
     levelingFrame:SetScript("OnEvent", function(self, event, ...)
         if      event == "PLAYER_XP_UPDATE"        then OnXPUpdate()
         elseif  event == "PLAYER_LEVEL_UP"          then OnLevelUp(...)
         elseif  event == "ZONE_CHANGED_NEW_AREA"    then OnZoneChange()
         elseif  event == "QUEST_TURNED_IN"          then OnQuestTurnIn(...)
-        elseif  event == "CHALLENGE_MODE_COMPLETED" then OnChallengeModeCompleted()
         end
     end)
 
@@ -152,6 +146,14 @@ end
 function L.GetXPH()
     local db = LvlHistory.db
     return db and db.session.xph or 0
+end
+
+--- XP totale gagnee sur la session courante, en tenant compte des level ups.
+--- (UnitXP() repart a 0 a chaque niveau, d'ou l'accumulateur.)
+function L.GetSessionXP()
+    local db = LvlHistory.db
+    if not db then return 0 end
+    return levelXPAccumulated + (UnitXP("player") - (db.session.xpAtStart or 0))
 end
 
 --- Retourne le top N des zones par temps passé

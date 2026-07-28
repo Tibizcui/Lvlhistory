@@ -1736,6 +1736,24 @@ local function Build()
     mainFrame:SetBackdropColor(C.BG[1], C.BG[2], C.BG[3], C.BG[4])
     mainFrame:SetBackdropBorderColor(C.BORDER[1], C.BORDER[2], C.BORDER[3], 1)
 
+    -- Restaure l'opacite sauvegardee des l'ouverture
+    local savedAlpha = (LvlHistoryDB and LvlHistoryDB.settings
+        and LvlHistoryDB.settings.alpha) or 0.97
+    mainFrame:SetAlpha(savedAlpha)
+
+    -- Rafraichissement live : met a jour le chrono, l'XP/h et l'onglet actif
+    -- environ une fois par seconde tant que la fenetre est ouverte.
+    mainFrame:SetScript("OnUpdate", function(self, e)
+        self._acc = (self._acc or 0) + e
+        if self._acc < 1 then return end
+        self._acc = 0
+        if not self:IsShown() then return end
+        RefreshGlobal()
+        if isCollapsed then return end
+        local fn = UI["RefreshTab" .. activeTab]
+        if fn then fn() end
+    end)
+
     BuildHeader(mainFrame)
     tabBarRef = BuildTabBar(mainFrame)
     BuildFooter(mainFrame)
@@ -1764,6 +1782,11 @@ end
 function UI.Show()
     if not mainFrame then Build() end
     mainFrame:Show()
+    -- Restaure l'etat reduit sauvegarde (grille compacte 2x2)
+    if LvlHistoryDB and LvlHistoryDB.settings
+        and LvlHistoryDB.settings.collapsed and not isCollapsed then
+        UI.Collapse()
+    end
     UI.RefreshTab1()
 end
 

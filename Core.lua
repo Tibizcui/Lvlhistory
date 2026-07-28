@@ -98,23 +98,48 @@ local function SetMode(db)
     T.Bridge.Emit("onModeSwitch", oldMode, db.mode)
 end
 
+-- Accumule le temps de jeu (crash-safe) SANS toucher a la session courante.
+-- Appele periodiquement : n'insere aucun snapshot, ne reinitialise pas startTime.
+-- On solde le delta ecoule depuis le dernier tick pour eviter tout double comptage.
+local function AccruePlayTime()
+    local db = T.db
+    if not db then return end
+
+    local now   = time()
+    local last  = db.session.lastTick or db.session.startTime or now
+    local delta = now - last
+    if delta > 0 then
+        db.totalPlayTime = (db.totalPlayTime or 0) + delta
+    end
+    db.session.lastTick = now
+end
+
+-- Enregistre un snapshot de la session courante puis la redemarre proprement.
+-- Appele UNIQUEMENT en fin de session reelle : logout ou switch de mode.
+-- (Le ticker periodique appelle AccruePlayTime, pas cette fonction, pour ne pas
+--  gonfler le nombre de sessions ni casser le chrono / XP-h en cours.)
 local function SaveCurrentSession()
     local db = T.db
     if not db then return end
 
-    local elapsed = time() - db.session.startTime
+    -- Solde le temps de jeu restant depuis le dernier tick avant le snapshot
+    AccruePlayTime()
+
+    local elapsed = time() - (db.session.startTime or time())
     if elapsed < 60 then return end
 
-    -- Cumul de temps total joué (persistant)
-    db.totalPlayTime = (db.totalPlayTime or 0) + elapsed
-    db.session.startTime = time()  -- reset pour éviter le double-comptage au prochain save
+    -- XP reellement gagnee sur toute la session (traverse les level ups)
+    local xpGained = 0
+    if db.mode == "leveling" and T.Leveling and T.Leveling.GetSessionXP then
+        xpGained = T.Leveling.GetSessionXP()
+    end
 
     local snapshot = {
         date       = db.session.startTime,
         mode       = db.mode,
         duration   = elapsed,
         zone       = db.session.zone,
-        xpGained   = (db.mode == "leveling") and (UnitXP("player") - db.session.xpAtStart) or 0,
+        xpGained   = xpGained,
         xph        = db.session.xph or 0,
         levelStart = db.session.levelStart or db.level,
         levelEnd   = UnitLevel("player"),
@@ -130,6 +155,17 @@ local function SaveCurrentSession()
     table.insert(sessions, snapshot)
 
     T.Bridge.Emit("onSessionEnd", snapshot)
+
+    -- Repart sur une session vierge (utile au switch de mode ; inoffensif au logout)
+    local now = time()
+    db.session.startTime   = now
+    db.session.lastTick    = now
+    db.session.xpAtStart   = UnitXP("player")
+    db.session.goldAtStart = GetMoney()
+    db.session.levelStart  = UnitLevel("player")
+    db.session.questCount  = 0
+    db.session.dungeons    = 0
+    db.session.xph         = 0
 end
 
 -- ─────────────────────────────────────────────
@@ -154,6 +190,7 @@ coreFrame:SetScript("OnEvent", function(self, event, ...)
 
         -- Initialiser la session courante (non persistée entre reloads)
         db.session.startTime    = time()
+        db.session.lastTick     = time()
         db.session.xpAtStart    = UnitXP("player")
         db.session.goldAtStart  = GetMoney()
         db.session.levelStart   = UnitLevel("player")
@@ -220,9 +257,10 @@ coreFrame:SetScript("OnEvent", function(self, event, ...)
         -- Bouton minimap
         T.Minimap.Init()
 
-        -- Sauvegarde incrémentale toutes les 5 minutes
+        -- Accumulation incrémentale du temps de jeu toutes les 5 minutes (crash-safe).
+        -- N'insère PAS de snapshot : le snapshot n'est créé qu'en fin de session réelle.
         C_Timer.NewTicker(SAVE_INTERVAL, function()
-            SaveCurrentSession()
+            AccruePlayTime()
         end)
 
         T.Utils.Log("v%s chargé — %s — Mode: %s", ADDON_VERSION, T.charKey, db.mode)
@@ -239,6 +277,8 @@ coreFrame:SetScript("OnEvent", function(self, event, ...)
 
         if newLevel >= GetMaxPlayerLevel() then
             T.Leveling.Stop()
+            -- Cloture et enregistre la session de leveling qui vient de se terminer
+            SaveCurrentSession()
             local oldMode = db.mode
             db.mode = "farming"
             T.Farming.Start()
@@ -318,6 +358,8 @@ dgnFrame:SetScript("OnEvent", function(self, event, ...)
 
     -- ── Mythic+ ────────────────────────────────────────────────────────────
     elseif event == "CHALLENGE_MODE_COMPLETED" then
+        local db = T.db
+        if not db then return end
         local mapID = C_ChallengeMode and C_ChallengeMode.GetActiveChallengeMapID
             and C_ChallengeMode.GetActiveChallengeMapID()
         local zoneName

@@ -1,4 +1,4 @@
-## Interface: 120005
+## Interface: 120005, 120007, 120100
 ## Title: LvlHistory
 ## Notes: Leveling & farming session tracker — TibiSuite
 ## Notes-frFR: Suivi de sessions leveling & farming — TibiSuite
