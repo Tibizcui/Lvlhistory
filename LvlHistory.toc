@@ -3,10 +3,11 @@
 ## Notes: Leveling & farming session tracker — TibiSuite
 ## Notes-frFR: Suivi de sessions leveling & farming — TibiSuite
 ## Author: Tibizcui
-## Version: 0.1.0
+## Version: 4.0
 ## SavedVariables: LvlHistoryDB
 ## IconTexture: Interface\AddOns\LvlHistory\Media\icon
 
+TibiMidnightUI.lua
 Utils.lua
 Bridge.lua
 Core.lua
@@ -15,3 +16,4 @@ Farming.lua
 Minimap.lua
 UI.lua
 Locale\frFR.lua
+LvlHistory_Suite.lua

@@ -182,8 +182,8 @@ local function BuildHeader(parent)
     HLine(hdr, -HDR_H, 0, 0, C.SEP)
 
     -- Titre
-    local title = FS(hdr, "GameFontNormal", "LEFT", 14, 0)
-    title:SetTextColor(C.GOLD[1], C.GOLD[2], C.GOLD[3])
+    local title = FS(hdr, "GameFontNormalLarge", "LEFT", 14, 0)
+    title:SetTextColor(0.369, 0.886, 0.137)  -- vert (accent LvlHistory)
     title:SetText("LvlHistory")
 
     -- Separateur vertical
